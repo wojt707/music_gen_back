@@ -1,9 +1,9 @@
 from django.http import JsonResponse, FileResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
-import os
+from pathlib import Path
 
-midi_path = r"C:\projects\studia\POLSLrepo_sem7\music_generator\data\ready_midi\Rock\Soft Rock\Rick Astley\Never Gonna Give You Up\TRAXLZU12903D05F94.mid"
+midi_path = Path(__file__).resolve().parent.parent / "models" / "temp.mid"
 
 
 @csrf_exempt
@@ -32,11 +32,24 @@ def get_genres(request):
     try:
         if request.method == "GET":
             genres = [
-                {"code": f.name.lower(), "name": f.name}
-                for f in os.scandir(
-                    r"C:\projects\studia\POLSLrepo_sem7\music_generator\data\ready_midi"
-                )
-                if f.is_dir()
+                {"code": "ambient", "name": "Ambient"},
+                {"code": "blues", "name": "Blues"},
+                {"code": "children", "name": "Children"},
+                {"code": "classical", "name": "Classical"},
+                {"code": "country", "name": "Country"},
+                {"code": "electronic", "name": "Electronic"},
+                {"code": "folk", "name": "Folk"},
+                {"code": "jazz", "name": "Jazz"},
+                {"code": "latin", "name": "Latin"},
+                {"code": "pop", "name": "Pop"},
+                {"code": "rap", "name": "Rap"},
+                {"code": "reggae", "name": "Reggae"},
+                {"code": "religious", "name": "Religious"},
+                {"code": "rock", "name": "Rock"},
+                {"code": "soul", "name": "Soul"},
+                {"code": "soundtracks", "name": "Soundtracks"},
+                {"code": "unknown", "name": "Unknown"},
+                {"code": "world", "name": "World"},
             ]
             return JsonResponse(genres, safe=False)
         else:

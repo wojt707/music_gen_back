@@ -4,6 +4,7 @@ import music21
 import os
 from pathlib import Path
 import json
+import tempfile
 
 
 class LSTMGenerator(nn.Module):
@@ -146,9 +147,10 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     Generates a MIDI file based on the given parameters.
 
     Args:
-        genre (str): The genre of the music (for now, it just tags the file).
+        genre (str): The genre of the music.
         bpm (int): The tempo in beats per minute.
         length (int): The length of the piece in words (tokens).
+        randomness (float): A randomness factor for generation.
 
     Returns:
         str: The path to the generated MIDI file.
@@ -156,6 +158,7 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     print(
         f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, randomness = {randomness}"
     )
+
     parent_path = Path(__file__).resolve().parent.parent
     models_path = os.path.join(parent_path, "models")
     midis_path = os.path.join(parent_path, "midis")
@@ -165,20 +168,11 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     with open(os.path.join(models_path, "idx_to_word.json"), "r") as f:
         idx_to_word = json.load(f)
 
-    vocab_size = len(word_to_idx)
-
-    embed_size = 128
-    hidden_size = 256
-    num_layers = 2
-    seq_length = 64
-
-    model = LSTMGenerator(vocab_size, embed_size, hidden_size, num_layers)
-
     model_path = os.path.join(models_path, f"{genre}.pt")
-
     if not os.path.exists(model_path):
-        raise Exception(f"Model {genre} does not exist.")
+        raise Exception(f"Model for genre '{genre}' does not exist.")
 
+    model = LSTMGenerator(len(word_to_idx), 128, 256, 2)
     model.load_state_dict(
         torch.load(
             model_path,
@@ -188,20 +182,24 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     )
 
     # TODO implement various seed sequences
-    seed_sequence = "PAUSE_16th D4_half_zero D4_eighth_half D4_eighth_eighth A3_eighth_eighth".split(
-        " "
-    )
-
+    seed_sequence = [
+        "PAUSE_16th",
+        "D4_half_zero",
+        "C4_eighth_half",
+        "A3_whole_half",
+        "G3_half_whole",
+    ]
     generated = generate_sequence(
-        model, seed_sequence, word_to_idx, idx_to_word, seq_length, length
+        model, seed_sequence, word_to_idx, idx_to_word, 64, length
     )
 
-    print("Generated Sequence:", " ".join(generated))
-
+    # print("Generated Sequence:", " ".join(generated))
     os.makedirs(midis_path, exist_ok=True)
-    midi_file_path = os.path.join(midis_path, f"{genre}.mid")
 
-    create_midi_from_sequence(generated, bpm, midi_file_path)
-    # create_midi_from_sequence(seed_sequence, bpm, os.path.join(midis_path, "sth.mid"))
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".mid", dir=midis_path
+    ) as temp_file:
+        create_midi_from_sequence(generated, bpm, temp_file.name)
+        return temp_file.name
 
-    return midi_file_path
+    return ""

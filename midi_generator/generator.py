@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import json
 import tempfile
+import numpy as np
 
 
 class LSTMGenerator(nn.Module):
@@ -38,7 +39,7 @@ def generate_sequence(
     idx_to_word,
     seq_length,
     length=100,
-    padding_token="PAD",
+    temperature=1.0,
 ):
     """
     Generates sequences using a trained LSTM model.
@@ -50,10 +51,10 @@ def generate_sequence(
     - idx_to_word: Dictionary mapping indices to words.
     - seq_length: Length of input sequences expected by the model.
     - length: Number of words to generate.
-    - padding_token: Token used for padding.
+    - temperature: Controls the randomness of predictions (higher = more random).
 
     Returns:
-    - generated_sequence: The generated sequence of words without "PAD".
+        List of generated sequence of words.
     """
     # Ensure all words are in the vocabulary
     seed_sequence = [word for word in seed_sequence if word in word_to_idx]
@@ -65,7 +66,7 @@ def generate_sequence(
     model.eval()
 
     # Prepare the starting sequence with padding
-    pad_idx = word_to_idx[padding_token]
+    pad_idx = word_to_idx["PAD"]
     start_tokens = [word_to_idx.get(word, pad_idx) for word in seed_sequence]
 
     if len(start_tokens) < seq_length:
@@ -76,22 +77,20 @@ def generate_sequence(
     generated_sequence = seed_sequence[:]
     current_sequence = torch.LongTensor([start_tokens]).to(device)
 
-    # Generate tokens
     for _ in range(length - len(seed_sequence)):
         with torch.no_grad():
             output = model(current_sequence)
-            # Sort the predictions to find the top two most likely tokens
-            probs = torch.softmax(output, dim=1)
-            top2 = torch.topk(probs, k=5, dim=1)
-            next_token_idx = top2.indices[0, 0].item()
 
-            # If the most likely token is "PAD", use the second most likely token
-            if next_token_idx == pad_idx:
-                next_token_idx = top2.indices[0, 1].item()
+            logits = output / temperature
 
-            next_token = idx_to_word[str(next_token_idx)]
+            probs = torch.softmax(logits, dim=-1).squeeze().cpu().numpy()
+            next_token_idx = np.random.choice(len(probs), p=probs)
 
-            generated_sequence.append(next_token)
+            # Avoid generating "PAD" token
+            while next_token_idx == pad_idx:
+                next_token_idx = np.random.choice(len(probs), p=probs)
+
+            generated_sequence.append(idx_to_word[str(next_token_idx)])
 
         # Update the current sequence for the next prediction
         next_input = current_sequence.squeeze(0).tolist()[1:] + [next_token_idx]
@@ -142,7 +141,7 @@ def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
     midi_stream.write("midi", fp=output_path)
 
 
-def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> str:
+def generate_midi_file(genre: str, bpm: int, length: int, temperature: float) -> str:
     """
     Generates a MIDI file based on the given parameters.
 
@@ -150,13 +149,12 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
         genre (str): The genre of the music.
         bpm (int): The tempo in beats per minute.
         length (int): The length of the piece in words (tokens).
-        randomness (float): A randomness factor for generation.
 
     Returns:
         str: The path to the generated MIDI file.
     """
     print(
-        f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, randomness = {randomness}"
+        f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, temperature = {temperature}"
     )
 
     parent_path = Path(__file__).resolve().parent.parent
@@ -190,7 +188,7 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
         "G3_half_whole",
     ]
     generated = generate_sequence(
-        model, seed_sequence, word_to_idx, idx_to_word, 64, length
+        model, seed_sequence, word_to_idx, idx_to_word, seq_length=64, length=length
     )
 
     # print("Generated Sequence:", " ".join(generated))

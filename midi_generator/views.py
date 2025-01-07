@@ -1,3 +1,4 @@
+from pathlib import Path
 from django.http import JsonResponse, FileResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
@@ -97,4 +98,26 @@ def get_genres(request):
 
     except Exception as e:
         print(e)
+        return JsonResponse({"message": str(e)}, status=500)
+
+
+def get_piano_sample(request, sample_name):
+    """
+    Returns a specific piano sample file.
+    """
+    if request.method != "GET":
+        return JsonResponse({"message": "Wrong method."}, status=405)
+
+    parent_path = Path(__file__).resolve().parent.parent
+
+    sample_path = os.path.join(parent_path, "samples", sample_name)
+
+    print(sample_path)
+
+    if not os.path.exists(sample_path):
+        return JsonResponse({"message": f"Sample {sample_name} not found."}, status=404)
+
+    try:
+        return FileResponse(open(sample_path, "rb"), content_type="audio/mp3")
+    except Exception as e:
         return JsonResponse({"message": str(e)}, status=500)

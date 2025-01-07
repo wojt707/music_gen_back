@@ -7,15 +7,37 @@ from .generator import generate_midi_file
 
 
 class CustomFileResponse(FileResponse):
-    def __init__(self, *args, as_attachment=..., filename=..., midi_path, **kwargs):
+    """
+    A custom FileResponse class to handle MIDI file responses.
+    Automatically deletes the MIDI file after the response is closed.
+    """
+
+    def __init__(
+        self,
+        *args,
+        as_attachment: bool = ...,
+        filename: str = ...,
+        midi_path: str,
+        **kwargs,
+    ):
+        """
+        Initialize the custom file response.
+
+        Parameters:
+        - as_attachment (bool): Whether to treat the file as an attachment.
+        - filename (str): The name of the file to be downloaded.
+        - midi_path (str): The path to the MIDI file.
+        """
         super().__init__(
             *args, as_attachment=as_attachment, filename=filename, **kwargs
         )
         self.midi_path = midi_path
 
     def close(self):
+        """
+        Closes the response and deletes the associated MIDI file.
+        """
         super(CustomFileResponse, self).close()
-
         try:
             os.remove(self.midi_path)
             print(f"Midi file deleted. {self.midi_path}")
@@ -24,20 +46,27 @@ class CustomFileResponse(FileResponse):
 
 
 @csrf_exempt
-def generate_midi(request):
+def generate_midi(request: HttpResponse) -> JsonResponse | CustomFileResponse:
     """
     Handles MIDI file generation requests.
+
+    Parameters:
+    - request (HttpResponse): The incoming HTTP request.
+
+    Returns:
+    - JsonResponse: Error or success messages.
+    - CustomFileResponse: MIDI file response upon successful generation.
     """
     if request.method != "POST":
         return JsonResponse({"message": "Wrong method."}, status=405)
 
     try:
         # Parse and validate the request data
-        data = json.loads(request.body)
-        genre = data.get("genre")
-        bpm = data.get("bpm")
-        length = data.get("length")
-        randomness = data.get("randomness")
+        data: dict = json.loads(request.body)
+        genre: str = data.get("genre")
+        bpm: int = data.get("bpm")
+        length: int = data.get("length")
+        randomness: float = data.get("randomness")
 
         if not genre or not isinstance(genre, str):
             return JsonResponse({"message": "Invalid or missing genre."}, status=400)
@@ -46,7 +75,7 @@ def generate_midi(request):
         if not isinstance(length, int) or length <= 0:
             return JsonResponse({"message": f"Invalid length. {length}"}, status=400)
         if (
-            ((not isinstance(randomness, int) and not isinstance(randomness, float)))
+            (not isinstance(randomness, (int, float)))
             or randomness < -100
             or randomness > 100
         ):
@@ -55,7 +84,7 @@ def generate_midi(request):
             )
 
         # Generate the MIDI file
-        midi_path = generate_midi_file(genre, bpm, length, float(randomness))
+        midi_path: str = generate_midi_file(genre, bpm, length, float(randomness))
         if not os.path.exists(midi_path):
             return JsonResponse({"message": "MIDI generation failed."}, status=500)
 
@@ -73,14 +102,21 @@ def generate_midi(request):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-def get_genres(request):
+def get_genres(request: HttpResponse) -> JsonResponse:
     """
     Returns the list of available genres.
+
+    Parameters:
+    - request (HttpResponse): The incoming HTTP request.
+
+    Returns:
+    - JsonResponse: A list of genre dictionaries or error messages.
     """
     if request.method != "GET":
         return JsonResponse({"message": "Wrong method."}, status=405)
+
     try:
-        genres = [
+        genres: list[dict] = [
             {"code": "ambient", "name": "Ambient", "bpm": 136},
             {"code": "blues", "name": "Blues", "bpm": 120},
             {"code": "children", "name": "Children", "bpm": 100},
@@ -106,15 +142,24 @@ def get_genres(request):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-def get_piano_sample(request, sample_name):
+def get_piano_sample(
+    request: HttpResponse, sample_name: str
+) -> JsonResponse | FileResponse:
     """
     Returns a specific piano sample file.
+
+    Parameters:
+    - request (HttpResponse): The incoming HTTP request.
+    - sample_name (str): The name of the sample file.
+
+    Returns:
+    - JsonResponse: Error messages or success status.
+    - FileResponse: The requested sample file.
     """
     if request.method != "GET":
         return JsonResponse({"message": "Wrong method."}, status=405)
 
     parent_path = Path(__file__).resolve().parent.parent
-
     sample_path = os.path.join(parent_path, "samples", sample_name)
 
     print(sample_path)

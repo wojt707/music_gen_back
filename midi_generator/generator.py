@@ -16,8 +16,18 @@ class LSTMGenerator(nn.Module):
         embed_size: int,
         hidden_size: int,
         num_layers: int,
-        dropout=0.2,
+        dropout: float = 0.2,
     ):
+        """
+        Initializes the LSTM Generator model.
+
+        Parameters:
+        - vocab_size (int): Size of the vocabulary (number of unique tokens).
+        - embed_size (int): Size of the embedding vector for each token.
+        - hidden_size (int): Number of hidden units in the LSTM.
+        - num_layers (int): Number of layers in the LSTM.
+        - dropout (float): Dropout rate applied to the LSTM layers.
+        """
         super(LSTMGenerator, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -29,7 +39,17 @@ class LSTMGenerator(nn.Module):
         )
         self.fc = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x, prev_state):
+    def forward(self, x: torch.Tensor, prev_state: tuple) -> tuple:
+        """
+        Forward pass for generating predictions.
+
+        Parameters:
+        - x (torch.Tensor): Input tensor of word indices.
+        - prev_state (tuple): The previous hidden and cell states of the LSTM.
+
+        Returns:
+        - tuple: Logits from the fully connected layer and the updated states.
+        """
         word_embed = self.word_embedding(x)  # (batch_size, seq_length, embed_size)
 
         output, state = self.lstm(
@@ -37,9 +57,17 @@ class LSTMGenerator(nn.Module):
         )  # (batch_size, seq_length, lstm_size)
         logits = self.fc(output)  # (batch_size, seq_length, vocab_size)
         return logits, state
-        # return output[:, -1, :]
 
-    def init_state(self, batch_size):
+    def init_state(self, batch_size: int) -> tuple:
+        """
+        Initializes the hidden and cell states of the LSTM.
+
+        Parameters:
+        - batch_size (int): The batch size for generating sequences.
+
+        Returns:
+        - tuple: Initialized hidden and cell states.
+        """
         return (
             torch.zeros(
                 self.num_layers, batch_size, self.hidden_size, device=self.device
@@ -51,6 +79,15 @@ class LSTMGenerator(nn.Module):
 
 
 def map_randomness_to_temperature(randomness: float) -> float:
+    """
+    Maps the randomness parameter to a temperature value.
+
+    Parameters:
+    - randomness (float): The randomness factor between -100 and 100.
+
+    Returns:
+    - float: Corresponding temperature value between 0.1 and 10.
+    """
     randomness = min(100.0, max(-100.0, randomness))
 
     if randomness >= 0.0:
@@ -62,33 +99,31 @@ def map_randomness_to_temperature(randomness: float) -> float:
 
 
 def generate_sequence(
-    model,
-    seed_sequence,
-    word_to_idx,
-    idx_to_word,
-    seq_length,
-    length=100,
-    temperature=1.0,
-):
+    model: nn.Module,
+    seed_sequence: list,
+    word_to_idx: dict,
+    idx_to_word: dict,
+    seq_length: int,
+    length: int = 100,
+    temperature: float = 1.0,
+) -> list:
     """
-    Generates sequences using a trained LSTM model.
+    Generates a sequence using a trained LSTM model.
 
     Parameters:
-    - model: Trained LSTM model.
-    - seed_sequence: Initial sequence to start generation.
-    - word_to_idx: Dictionary mapping words to indices.
-    - idx_to_word: Dictionary mapping indices to words.
-    - seq_length: Length of input sequences expected by the model.
-    - length: Number of words to generate.
-    - temperature: Controls the randomness of predictions (higher = more random).
+    - model (nn.Module): Trained LSTM model.
+    - seed_sequence (list): Initial sequence to start generation.
+    - word_to_idx (dict): Mapping of words to indices.
+    - idx_to_word (dict): Mapping of indices to words.
+    - seq_length (int): The length of input sequences expected by the model.
+    - length (int): The number of tokens to generate.
+    - temperature (float): Controls randomness of predictions (higher = more random).
 
     Returns:
-        List of generated sequence of words.
+    - list: Generated sequence of words.
     """
-    # Ensure all words are in the vocabulary
     seed_sequence = [word for word in seed_sequence if word in word_to_idx]
 
-    # Ensure the model is on the appropriate device
     model.to(model.device)
     model.eval()
 
@@ -104,20 +139,17 @@ def generate_sequence(
     generated_sequence = seed_sequence[:]
     current_sequence = torch.LongTensor([start_tokens]).to(model.device)
 
-    # Initialize the LSTM hidden state
     state_h, state_c = model.init_state(batch_size=1)
 
     for _ in range(length - len(seed_sequence)):
         with torch.no_grad():
             logits, (state_h, state_c) = model(current_sequence, (state_h, state_c))
 
-            # Focus on the last timestep's output
+            # Focus on the last timestep's output and apply temperature scaling
             logits = logits[:, -1, :] / temperature
 
-            # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).squeeze().cpu().numpy()
 
-            # Sample the next token
             next_token_idx = np.random.choice(len(probs), p=probs)
 
             # Avoid generating "PAD" token
@@ -126,7 +158,6 @@ def generate_sequence(
 
             generated_sequence.append(idx_to_word[str(next_token_idx)])
 
-        # Update the current sequence for the next prediction
         next_input = current_sequence.squeeze(0).tolist()[1:] + [next_token_idx]
         current_sequence = torch.LongTensor([next_input]).to(model.device)
 
@@ -134,7 +165,14 @@ def generate_sequence(
 
 
 def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
+    """
+    Converts a sequence of words (representing music events) into a MIDI file.
 
+    Parameters:
+    - word_sequence (list): The sequence of generated words (representing music events).
+    - bpm (int): The tempo (beats per minute).
+    - output_path (str): The path where the generated MIDI file will be saved.
+    """
     midi_stream = music21.stream.Stream()
 
     bpm = music21.tempo.MetronomeMark(number=max(1, min(bpm, 512)))
@@ -166,7 +204,6 @@ def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
             note = music21.note.Note(pitch)
             note.quarterLength = duration_qlen
 
-            # Add the note to the stream
             midi_stream.insert(current_offset, note)
             current_offset += duration_qlen
             last_event_duration = duration_qlen
@@ -175,16 +212,17 @@ def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
     midi_stream.write("midi", fp=output_path)
 
 
-def get_random_seed(idx_to_word, genre: str, seed_folder: str):
+def get_random_seed(idx_to_word: dict, genre: str, seed_folder: str) -> list:
     """
-    Fetch random seed from the pre-generated seeds for a specific genre.
+    Fetches a random seed from pre-generated seeds for a specific genre.
 
-    Args:
-        genre (str): The genre for which a seed is needed.
-        seed_folder (str): Path to the folder containing seed files.
+    Parameters:
+    - idx_to_word (dict): Mapping of indices to words.
+    - genre (str): The genre of the seed.
+    - seed_folder (str): Path to the folder containing seed files.
 
     Returns:
-        list: The seed sequence as a list of words.
+    - list: The seed sequence as a list of words.
     """
     seed_file = os.path.join(seed_folder, f"{genre}_seeds.txt")
     if not os.path.exists(seed_file):
@@ -208,15 +246,15 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     """
     Generates a MIDI file based on the given parameters.
 
-    Args:
-        genre (str): The genre of the music.
-        bpm (int): The tempo in beats per minute.
-        length (int): The length of the piece in words (tokens).
+    Parameters:
+    - genre (str): The genre of the music.
+    - bpm (int): The tempo (beats per minute).
+    - length (int): The length of the generated sequence (in words).
+    - randomness (float): Controls the randomness of the generation.
 
     Returns:
-        str: The path to the generated MIDI file.
+    - str: Path to the generated MIDI file.
     """
-
     print(
         f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, randomness = {randomness}"
     )

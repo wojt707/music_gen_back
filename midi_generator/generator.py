@@ -18,18 +18,46 @@ class LSTMGenerator(nn.Module):
         dropout=0.2,
     ):
         super(LSTMGenerator, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.word_embedding = nn.Embedding(vocab_size, embed_size)
         self.lstm = nn.LSTM(
             embed_size, hidden_size, num_layers, batch_first=True, dropout=dropout
         )
         self.fc = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x):
+    def forward(self, x, prev_state):
         word_embed = self.word_embedding(x)  # (batch_size, seq_length, embed_size)
 
-        output, _ = self.lstm(word_embed)
-        output = self.fc(output)
-        return output[:, -1, :]
+        output, state = self.lstm(
+            word_embed, prev_state
+        )  # (batch_size, seq_length, lstm_size)
+        logits = self.fc(output)  # (batch_size, seq_length, vocab_size)
+        return logits, state
+        # return output[:, -1, :]
+
+    def init_state(self, batch_size):
+        return (
+            torch.zeros(
+                self.num_layers, batch_size, self.hidden_size, device=self.device
+            ),
+            torch.zeros(
+                self.num_layers, batch_size, self.hidden_size, device=self.device
+            ),
+        )
+
+
+def map_randomness_to_temperature(randomness: float) -> float:
+    randomness = min(100.0, max(-100.0, randomness))
+
+    if randomness >= 0.0:
+        temperature = 9.0 * randomness / 100.0 + 1.0
+    else:
+        temperature = 0.9 * (randomness / 100.0 + 1.0) + 0.1
+
+    return temperature
 
 
 def generate_sequence(
@@ -60,9 +88,7 @@ def generate_sequence(
     seed_sequence = [word for word in seed_sequence if word in word_to_idx]
 
     # Ensure the model is on the appropriate device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model.to(device)
+    model.to(model.device)
     model.eval()
 
     # Prepare the starting sequence with padding
@@ -75,15 +101,22 @@ def generate_sequence(
         start_tokens = start_tokens[-seq_length:]
 
     generated_sequence = seed_sequence[:]
-    current_sequence = torch.LongTensor([start_tokens]).to(device)
+    current_sequence = torch.LongTensor([start_tokens]).to(model.device)
+
+    # Initialize the LSTM hidden state
+    state_h, state_c = model.init_state(batch_size=1)
 
     for _ in range(length - len(seed_sequence)):
         with torch.no_grad():
-            output = model(current_sequence)
+            logits, (state_h, state_c) = model(current_sequence, (state_h, state_c))
 
-            logits = output / temperature
+            # Focus on the last timestep's output
+            logits = logits[:, -1, :] / temperature
 
+            # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).squeeze().cpu().numpy()
+
+            # Sample the next token
             next_token_idx = np.random.choice(len(probs), p=probs)
 
             # Avoid generating "PAD" token
@@ -94,7 +127,7 @@ def generate_sequence(
 
         # Update the current sequence for the next prediction
         next_input = current_sequence.squeeze(0).tolist()[1:] + [next_token_idx]
-        current_sequence = torch.LongTensor([next_input]).to(device)
+        current_sequence = torch.LongTensor([next_input]).to(model.device)
 
     return generated_sequence
 
@@ -141,7 +174,7 @@ def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
     midi_stream.write("midi", fp=output_path)
 
 
-def generate_midi_file(genre: str, bpm: int, length: int, temperature: float) -> str:
+def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> str:
     """
     Generates a MIDI file based on the given parameters.
 
@@ -153,9 +186,12 @@ def generate_midi_file(genre: str, bpm: int, length: int, temperature: float) ->
     Returns:
         str: The path to the generated MIDI file.
     """
+
     print(
-        f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, temperature = {temperature}"
+        f"Starting generation for genre = {genre}, bpm = {bpm}, length = {length}, randomness = {randomness}"
     )
+
+    temperature = map_randomness_to_temperature(randomness)
 
     parent_path = Path(__file__).resolve().parent.parent
     models_path = os.path.join(parent_path, "models")
@@ -181,14 +217,106 @@ def generate_midi_file(genre: str, bpm: int, length: int, temperature: float) ->
 
     # TODO implement various seed sequences
     seed_sequence = [
-        "PAUSE_16th",
-        "D4_half_zero",
-        "C4_eighth_half",
-        "A3_whole_half",
-        "G3_half_whole",
-    ]
+        "C4_quarter_zero",
+        "E3_half_zero",
+        "C3_half_zero",
+        "C4_quarter_quarter",
+        "G4_quarter_quarter",
+        "C4_half_zero",
+        "C3_half_zero",
+        "G4_quarter_quarter",
+        "A4_quarter_quarter",
+        "C4_half_zero",
+        "F2_half_zero",
+        "A4_quarter_quarter",
+        "G4_half_quarter",
+        "C4_half_zero",
+        "C3_half_zero",
+        "F4_quarter_half",
+        "A3_half_zero",
+        "F2_half_zero",
+        "F4_quarter_quarter",
+        "E4_quarter_quarter",
+        "G3_half_zero",
+        "C3_half_zero",
+        "E4_quarter_quarter",
+        "D4_quarter_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "D4_quarter_quarter",
+        "C4_half_quarter",
+        "E3_half_zero",
+        "C3_half_zero",
+        "G4_quarter_half",
+        "C4_half_zero",
+        "C3_half_zero",
+        "G4_quarter_quarter",
+        "F4_quarter_quarter",
+        "A3_half_zero",
+        "F2_half_zero",
+        "F4_quarter_quarter",
+        "E4_quarter_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "E4_quarter_quarter",
+        "D4_half_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "G4_quarter_half",
+        "C4_half_zero",
+        "C3_half_zero",
+        "G4_quarter_quarter",
+        "F4_quarter_quarter",
+        "A3_half_zero",
+        "F2_half_zero",
+        "F4_quarter_quarter",
+        "E4_quarter_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "E4_quarter_quarter",
+        "D4_half_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "C4_quarter_half",
+        "E3_half_zero",
+        "C3_half_zero",
+        "C4_quarter_quarter",
+        "G4_quarter_quarter",
+        "C4_half_zero",
+        "C3_half_zero",
+        "G4_quarter_quarter",
+        "A4_quarter_quarter",
+        "C4_half_zero",
+        "F2_half_zero",
+        "A4_quarter_quarter",
+        "G4_half_quarter",
+        "C4_half_zero",
+        "C3_half_zero",
+        "F4_quarter_half",
+        "A3_half_zero",
+        "F2_half_zero",
+        "F4_quarter_quarter",
+        "E4_quarter_quarter",
+        "G3_half_zero",
+        "C3_half_zero",
+        "E4_quarter_quarter",
+        "D4_quarter_quarter",
+        "G3_half_zero",
+        "G2_half_zero",
+        "D4_quarter_quarter",
+        "C4_half_quarter",
+        "E3_half_zero",
+        "C3_half_zero",
+    ][:30]
+    print(len(seed_sequence))
     generated = generate_sequence(
-        model, seed_sequence, word_to_idx, idx_to_word, seq_length=64, length=length
+        model,
+        seed_sequence,
+        word_to_idx,
+        idx_to_word,
+        seq_length=64,
+        length=length,
+        temperature=temperature,
     )
 
     # print("Generated Sequence:", " ".join(generated))

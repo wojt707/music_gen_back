@@ -16,7 +16,6 @@ class CustomFileResponse(FileResponse):
     def close(self):
         super(CustomFileResponse, self).close()
 
-        # TODO uncomment removing - now just to see if anyone does sth lol
         try:
             os.remove(self.midi_path)
             print(f"Midi file deleted. {self.midi_path}")

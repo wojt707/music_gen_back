@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import tempfile
 import numpy as np
+import random
 
 
 class LSTMGenerator(nn.Module):
@@ -174,6 +175,35 @@ def create_midi_from_sequence(word_sequence: list, bpm: int, output_path: str):
     midi_stream.write("midi", fp=output_path)
 
 
+def get_random_seed(idx_to_word, genre: str, seed_folder: str):
+    """
+    Fetch random seed from the pre-generated seeds for a specific genre.
+
+    Args:
+        genre (str): The genre for which a seed is needed.
+        seed_folder (str): Path to the folder containing seed files.
+
+    Returns:
+        list: The seed sequence as a list of words.
+    """
+    seed_file = os.path.join(seed_folder, f"{genre}_seeds.txt")
+    if not os.path.exists(seed_file):
+        raise FileNotFoundError(f"Seed file for genre {genre} not found.")
+
+    with open(seed_file, "r") as f:
+        seeds = f.readlines()
+
+    if not seeds:
+        raise ValueError(f"No seeds found in the seed file for genre {genre}.")
+
+    token_seed = random.choice(seeds).strip().split()
+    word_seed = [idx_to_word[token] for token in token_seed]
+
+    print(token_seed)
+    print(word_seed)
+    return word_seed
+
+
 def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> str:
     """
     Generates a MIDI file based on the given parameters.
@@ -196,6 +226,7 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
     parent_path = Path(__file__).resolve().parent.parent
     models_path = os.path.join(parent_path, "models")
     midis_path = os.path.join(parent_path, "midis")
+    seeds_path = os.path.join(parent_path, "seeds")
 
     with open(os.path.join(models_path, "word_to_idx.json"), "r") as f:
         word_to_idx = json.load(f)
@@ -215,100 +246,8 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
         )
     )
 
-    # TODO implement various seed sequences
-    seed_sequence = [
-        "C4_quarter_zero",
-        "E3_half_zero",
-        "C3_half_zero",
-        "C4_quarter_quarter",
-        "G4_quarter_quarter",
-        "C4_half_zero",
-        "C3_half_zero",
-        "G4_quarter_quarter",
-        "A4_quarter_quarter",
-        "C4_half_zero",
-        "F2_half_zero",
-        "A4_quarter_quarter",
-        "G4_half_quarter",
-        "C4_half_zero",
-        "C3_half_zero",
-        "F4_quarter_half",
-        "A3_half_zero",
-        "F2_half_zero",
-        "F4_quarter_quarter",
-        "E4_quarter_quarter",
-        "G3_half_zero",
-        "C3_half_zero",
-        "E4_quarter_quarter",
-        "D4_quarter_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "D4_quarter_quarter",
-        "C4_half_quarter",
-        "E3_half_zero",
-        "C3_half_zero",
-        "G4_quarter_half",
-        "C4_half_zero",
-        "C3_half_zero",
-        "G4_quarter_quarter",
-        "F4_quarter_quarter",
-        "A3_half_zero",
-        "F2_half_zero",
-        "F4_quarter_quarter",
-        "E4_quarter_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "E4_quarter_quarter",
-        "D4_half_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "G4_quarter_half",
-        "C4_half_zero",
-        "C3_half_zero",
-        "G4_quarter_quarter",
-        "F4_quarter_quarter",
-        "A3_half_zero",
-        "F2_half_zero",
-        "F4_quarter_quarter",
-        "E4_quarter_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "E4_quarter_quarter",
-        "D4_half_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "C4_quarter_half",
-        "E3_half_zero",
-        "C3_half_zero",
-        "C4_quarter_quarter",
-        "G4_quarter_quarter",
-        "C4_half_zero",
-        "C3_half_zero",
-        "G4_quarter_quarter",
-        "A4_quarter_quarter",
-        "C4_half_zero",
-        "F2_half_zero",
-        "A4_quarter_quarter",
-        "G4_half_quarter",
-        "C4_half_zero",
-        "C3_half_zero",
-        "F4_quarter_half",
-        "A3_half_zero",
-        "F2_half_zero",
-        "F4_quarter_quarter",
-        "E4_quarter_quarter",
-        "G3_half_zero",
-        "C3_half_zero",
-        "E4_quarter_quarter",
-        "D4_quarter_quarter",
-        "G3_half_zero",
-        "G2_half_zero",
-        "D4_quarter_quarter",
-        "C4_half_quarter",
-        "E3_half_zero",
-        "C3_half_zero",
-    ][:30]
-    print(len(seed_sequence))
+    seed_sequence = get_random_seed(idx_to_word, genre, seeds_path)
+
     generated = generate_sequence(
         model,
         seed_sequence,
@@ -319,7 +258,6 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
         temperature=temperature,
     )
 
-    # print("Generated Sequence:", " ".join(generated))
     os.makedirs(midis_path, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(

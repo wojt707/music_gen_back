@@ -2,7 +2,6 @@ import torch.nn as nn
 import torch
 import music21
 import os
-from pathlib import Path
 import json
 import tempfile
 import numpy as np
@@ -225,6 +224,7 @@ def get_random_seed(idx_to_word: dict, genre: str, seed_folder: str) -> list:
     - list: The seed sequence as a list of words.
     """
     seed_file = os.path.join(seed_folder, f"{genre}_seeds.txt")
+
     if not os.path.exists(seed_file):
         raise FileNotFoundError(f"Seed file for genre {genre} not found.")
 
@@ -237,8 +237,6 @@ def get_random_seed(idx_to_word: dict, genre: str, seed_folder: str) -> list:
     token_seed = random.choice(seeds).strip().split()
     word_seed = [idx_to_word[token] for token in token_seed]
 
-    print(token_seed)
-    print(word_seed)
     return word_seed
 
 
@@ -261,9 +259,9 @@ def generate_midi_file(genre: str, bpm: int, length: int, randomness: float) -> 
 
     temperature = map_randomness_to_temperature(randomness)
 
-    parent_path = Path(__file__).resolve().parent.parent
+    parent_path = os.path.dirname(os.path.abspath(__file__))
     models_path = os.path.join(parent_path, "models")
-    midis_path = os.path.join(parent_path, "midis")
+    midis_path = "/tmp"
     seeds_path = os.path.join(parent_path, "seeds")
 
     with open(os.path.join(models_path, "word_to_idx.json"), "r") as f:

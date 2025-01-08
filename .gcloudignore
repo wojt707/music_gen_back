@@ -24,12 +24,17 @@
 
 .git
 .gitignore
-.env
 
 # Python pycache:
 
 **pycache**/
+\*.pyc
 
 # Ignored by the build system
 
 /setup.cfg
+
+venv/
+env/
+tmp/
+.env
